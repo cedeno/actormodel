@@ -1,76 +1,86 @@
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-struct MyActor {
+//trait ActorMessageHandler {
+//  fn handle_message(&mut self, msg: ActorMessage);
+//}
+
+// actor
+// receives messages
+// handles them
+// has internal state
+struct Actor<T> {
     receiver: mpsc::Receiver<ActorMessage>,
-    counter: u32,
+    state: T,
 }
 
-impl MyActor {
-    fn new(receiver: mpsc::Receiver<ActorMessage>) -> MyActor{
-        MyActor {
+impl<T> Actor<T> {
+    fn new(receiver: mpsc::Receiver<ActorMessage>, initial_state: T) -> Self {
+        Self {
             receiver,
-            counter: 0,
-        }
-    }
-
-    fn handle_message(&mut self, message: ActorMessage) {
-        match message {
-            ActorMessage::GetUniqueUID { respond_to} => {
-                self.counter += 1;
-                let _ = respond_to.send(self.counter);
-            }
+            state: initial_state,
         }
     }
 }
+
 enum ActorMessage {
-    GetUniqueUID {
-        respond_to: oneshot::Sender<u32>,
+    GetNextUID {
+        reply_to: oneshot::Sender<u64>,
     },
 }
 
 // runs the actor in a loop
-async fn run_actor(mut actor: MyActor) {
+async fn run_actor(mut actor: Actor<u64>) {
     while let Some(msg) = actor.receiver.recv().await {
-        actor.handle_message(msg);
+        let _ = actor.handle_message(msg);
     }
 }
 
-// handle to the actor,
-// creates and starts the actor
-// allows you to communicate with the actor,
-#[derive(Clone)]
-struct Handle {
-    //actor: MyActor,
+impl Actor<u64>
+{
+    fn handle_message(&mut self, msg: ActorMessage) {
+        match msg {
+            ActorMessage::GetNextUID { reply_to } => {
+                self.state = self.state + 1;
+                let _ = reply_to.send(self.state);
+            }
+        }
+    }
+}
+
+// Handle
+// creates actor and spawns it
+// has sender to send message to actor
+// has API to facilitate sending messages and getting results
+struct ActorHandle {
     sender: mpsc::Sender<ActorMessage>,
 }
-impl Handle {
-    fn new() -> Handle {
-        let (sender, receiver) = mpsc::channel(8);
-        let actor = MyActor::new(receiver);
+impl ActorHandle {
+    fn new() -> Self {
+        let (sender, receiver) = mpsc::channel(10);
+        let counter : u64 = 0;
+        let actor = Actor::new(receiver, counter);
         tokio::spawn(run_actor(actor));
-        Handle {
+        ActorHandle {
             sender,
         }
     }
 
-    async fn get_unique_id(self) -> u32 {
+    async fn get_next_uid(&self) -> u64 {
         let (sender, receiver) = oneshot::channel();
-        let msg = ActorMessage::GetUniqueUID {
-            respond_to: sender,
-
+        let msg = ActorMessage::GetNextUID {
+            reply_to: sender,
         };
         let _ = self.sender.send(msg).await;
-        let res = receiver.await.expect("could not read");
-        res
+        receiver.await.expect("oneshot receiver failed")
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let handle = Handle::new();
+    let actor = ActorHandle::new();
     for _ in 0..10 {
-        let val = handle.clone().get_unique_id().await;
-        println!("got val {}", val);
+        let uid = actor.get_next_uid().await;
+        println!("next uid={}", uid);
     }
 }
