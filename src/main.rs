@@ -1,23 +1,41 @@
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::sync::mpsc::Receiver;
 use async_trait::async_trait;
 
-#[async_trait]
 trait Actor {
-    fn new(receiver: mpsc::Receiver<ActorMessage>) -> Self;
-
+    fn new() -> Self;
     fn handle_message(&mut self, msg: ActorMessage);
-
-    // while loop consuming messages from receiver
-    async fn run(&mut self);
 }
 
 // message pump
-// it has the receiver
-// it pulls messages from the receiver
-// and it calls the message handler of its actor
+// feeds messages to the Actor
+struct ActorMessagePump<A>
+    where A: Actor
+{
+    actor: A,
+    receiver: mpsc::Receiver<ActorMessage>,
+}
 
+impl<A> ActorMessagePump<A>
+    where A: Actor
+{
+    fn new(actor: A, receiver: mpsc::Receiver<ActorMessage>) -> Self {
+        ActorMessagePump {
+            actor,
+            receiver,
+        }
+    }
+
+    // while loop consuming messages from receiver
+    async fn run(&mut self) {
+        while let Some(msg) = self.receiver.recv().await {
+            self.actor.handle_message(msg);
+        }
+    }
+}
+
+
+// don't like that you have to add all messages here
 enum ActorMessage {
     GetNextUID {
         reply_to: oneshot::Sender<u64>,
@@ -45,8 +63,10 @@ impl Handle {
 
     fn new() -> Self {
         let (sender, receiver) = mpsc::channel(10);
-        let mut actor = MyActor::new(receiver);
-        tokio::spawn(async move { actor.run().await });
+        let actor = MyActor::new();
+        let mut pump = ActorMessagePump::new(actor, receiver);
+
+        tokio::spawn(async move { pump.run().await });
         Handle {
             sender,
         }
@@ -57,15 +77,13 @@ impl Handle {
 // MyActor
 //
 struct MyActor {
-    receiver: mpsc::Receiver<ActorMessage>,
     counter: u64,
 }
 
 #[async_trait]
 impl Actor for MyActor {
-    fn new(receiver: Receiver<ActorMessage>) -> Self {
+    fn new() -> Self {
         MyActor {
-            receiver,
             counter: 0,
         }
     }
@@ -75,13 +93,6 @@ impl Actor for MyActor {
                 self.counter += 1;
                 let _ = reply_to.send(self.counter);
             }
-        }
-    }
-
-    // i dont want to have to copy this each time
-    async fn run(&mut self) {
-        while let Some(msg) = self.receiver.recv().await {
-            self.handle_message(msg);
         }
     }
 }
