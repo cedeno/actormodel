@@ -7,20 +7,19 @@ trait Actor {
     fn handle_message(&mut self, msg: ActorMessage);
 }
 
-// message pump
 // feeds messages to the Actor
-struct ActorMessagePump<A>
+struct MessageReceiver<A>
     where A: Actor
 {
     actor: A,
     receiver: mpsc::Receiver<ActorMessage>,
 }
 
-impl<A> ActorMessagePump<A>
+impl<A> MessageReceiver<A>
     where A: Actor
 {
     fn new(actor: A, receiver: mpsc::Receiver<ActorMessage>) -> Self {
-        ActorMessagePump {
+        MessageReceiver {
             actor,
             receiver,
         }
@@ -34,7 +33,6 @@ impl<A> ActorMessagePump<A>
     }
 }
 
-
 // don't like that you have to add all messages here
 enum ActorMessage {
     GetNextUID {
@@ -42,34 +40,24 @@ enum ActorMessage {
     }
 }
 
-//
-// Handle
-//
-struct Handle {
+struct MessageDispatcher
+{
     sender: mpsc::Sender<ActorMessage>,
 }
-
-impl Handle {
-    async fn get_next_uid(&mut self) -> u64 {
-        let (reply_to, response) = oneshot::channel();
-
-        let msg = ActorMessage::GetNextUID {
-            reply_to,
-        };
-
-        let _ = self.sender.send(msg).await;
-        response.await.expect("response channel failed")
-    }
-
-    fn new() -> Self {
+impl MessageDispatcher {
+    fn new<A>(actor: A) -> Self
+        where A: Actor + Send + 'static
+    {
         let (sender, receiver) = mpsc::channel(10);
-        let actor = MyActor::new();
-        let mut pump = ActorMessagePump::new(actor, receiver);
-
-        tokio::spawn(async move { pump.run().await });
-        Handle {
+        let mut message_receiver = MessageReceiver::new(actor, receiver);
+        tokio::spawn(async move { message_receiver.run().await });
+        MessageDispatcher {
             sender,
         }
+    }
+
+    async fn send(&mut self, msg: ActorMessage) {
+        let _ = self.sender.send(msg).await;
     }
 }
 
@@ -97,9 +85,35 @@ impl Actor for MyActor {
     }
 }
 
+//
+// Handle
+//
+struct MyActorHandle {
+    dispatcher: MessageDispatcher,
+}
+
+impl MyActorHandle {
+    async fn get_next_uid(&mut self) -> u64 {
+        let (reply_to, response) = oneshot::channel();
+
+        let msg = ActorMessage::GetNextUID {
+            reply_to,
+        };
+
+        let _ = self.dispatcher.send(msg).await;
+        response.await.expect("response channel failed")
+    }
+
+    fn new() -> Self {
+        MyActorHandle {
+            dispatcher: MessageDispatcher::new(MyActor::new())
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    let mut handle = Handle::new();
+    let mut handle = MyActorHandle::new();
     for _ in 0..10 {
         let uid = handle.get_next_uid().await;
         println!("uid={}", uid);
