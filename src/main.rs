@@ -1,6 +1,5 @@
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use async_trait::async_trait;
 
 trait Actor {
     fn new() -> Self;
@@ -68,7 +67,6 @@ struct MyActor {
     counter: u64,
 }
 
-#[async_trait]
 impl Actor for MyActor {
     fn new() -> Self {
         MyActor {
