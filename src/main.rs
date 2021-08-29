@@ -2,22 +2,24 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
 trait Actor {
+    type Message;
     fn new() -> Self;
-    fn handle_message(&mut self, msg: ActorMessage);
+    fn handle_message(&mut self, msg: Self::Message);
 }
 
 // feeds messages to the Actor
 struct MessageReceiver<A>
-    where A: Actor
+    where A: Actor,
 {
     actor: A,
-    receiver: mpsc::Receiver<ActorMessage>,
+    receiver: mpsc::Receiver<A::Message>,
 }
 
 impl<A> MessageReceiver<A>
-    where A: Actor
+    where A: Actor,
 {
-    fn new(actor: A, receiver: mpsc::Receiver<ActorMessage>) -> Self {
+    fn new(actor: A, receiver: mpsc::Receiver<A::Message>) -> Self
+    {
         MessageReceiver {
             actor,
             receiver,
@@ -32,20 +34,16 @@ impl<A> MessageReceiver<A>
     }
 }
 
-// don't like that you have to add all messages here
-enum ActorMessage {
-    GetNextUID {
-        reply_to: oneshot::Sender<u64>,
-    }
-}
-
-struct MessageDispatcher
+struct MessageDispatcher<A>
+    where A: Actor
 {
-    sender: mpsc::Sender<ActorMessage>,
+    sender: mpsc::Sender<A::Message>,
 }
-impl MessageDispatcher {
-    fn new<A>(actor: A) -> Self
-        where A: Actor + Send + 'static
+impl<A> MessageDispatcher<A>
+    where A: Actor + Send + 'static
+{
+    fn new(actor: A) -> Self
+        where <A as Actor>::Message: Send
     {
         let (sender, receiver) = mpsc::channel(10);
         let mut message_receiver = MessageReceiver::new(actor, receiver);
@@ -55,7 +53,7 @@ impl MessageDispatcher {
         }
     }
 
-    async fn send(&mut self, msg: ActorMessage) {
+    async fn send(&mut self, msg: A::Message) {
         let _ = self.sender.send(msg).await;
     }
 }
@@ -68,14 +66,16 @@ struct MyActor {
 }
 
 impl Actor for MyActor {
+    type Message = MyActorMessage;
+
     fn new() -> Self {
         MyActor {
             counter: 0,
         }
     }
-    fn handle_message(&mut self, msg: ActorMessage) {
+    fn handle_message(&mut self, msg: Self::Message) {
         match msg {
-            ActorMessage::GetNextUID { reply_to } => {
+            MyActorMessage::GetNextUID { reply_to } => {
                 self.counter += 1;
                 let _ = reply_to.send(self.counter);
             }
@@ -83,18 +83,24 @@ impl Actor for MyActor {
     }
 }
 
+enum MyActorMessage {
+    GetNextUID {
+        reply_to: oneshot::Sender<u64>,
+    },
+}
+
 //
 // Handle
 //
 struct MyActorHandle {
-    dispatcher: MessageDispatcher,
+    dispatcher: MessageDispatcher<MyActor>,
 }
 
 impl MyActorHandle {
     async fn get_next_uid(&mut self) -> u64 {
         let (reply_to, response) = oneshot::channel();
 
-        let msg = ActorMessage::GetNextUID {
+        let msg = MyActorMessage::GetNextUID {
             reply_to,
         };
 
