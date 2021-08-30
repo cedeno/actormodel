@@ -1,5 +1,5 @@
 [package]
-name = "actor_tokio"
+name = "actormodel"
 version = "0.1.0"
 authors = ["Rafhael Cedeno <cedeno@gmail.com>"]
 edition = "2018"
