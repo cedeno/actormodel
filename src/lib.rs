@@ -33,6 +33,7 @@ impl<A> MessageReceiver<A>
     }
 }
 
+#[derive(Clone)]
 pub struct MessageDispatcher<A>
     where A: Actor
 {
