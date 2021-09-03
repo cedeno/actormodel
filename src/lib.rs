@@ -33,9 +33,8 @@ impl<A> MessageReceiver<A>
     }
 }
 
-#[derive(Clone)]
 pub struct MessageDispatcher<A>
-    where A: Actor
+    where A: Actor,
 {
     sender: mpsc::Sender<A::Message>,
 }
@@ -55,5 +54,14 @@ impl<A> MessageDispatcher<A>
 
     pub async fn send(&mut self, msg: A::Message) {
         let _ = self.sender.send(msg).await;
+    }
+}
+impl<T> Clone for MessageDispatcher<T>
+    where T: Actor + Send + 'static
+{
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+        }
     }
 }

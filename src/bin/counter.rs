@@ -29,6 +29,7 @@ enum MyActorMessage {
     },
 }
 
+#[derive(Clone)]
 struct MyActorHandle {
     dispatcher: MessageDispatcher<MyActor>,
 }
@@ -57,6 +58,12 @@ async fn main() {
     let mut handle = MyActorHandle::new();
     for _ in 0..10 {
         let uid = handle.get_next_uid().await;
+        println!("uid={}", uid);
+    }
+
+    let mut handle2 = handle.clone();
+    for _ in 0..10 {
+        let uid = handle2.get_next_uid().await;
         println!("uid={}", uid);
     }
 }
