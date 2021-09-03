@@ -2,7 +2,6 @@ use tokio::sync::mpsc;
 
 pub trait Actor {
     type Message;
-    fn new() -> Self;
     fn handle_message(&mut self, msg: Self::Message);
 }
 
