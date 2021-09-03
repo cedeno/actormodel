@@ -1,5 +1,6 @@
 use actormodel::{Actor,MessageDispatcher};
 use tokio::sync::{oneshot};
+use async_trait::async_trait;
 
 struct MyActor {
     index: usize,
@@ -15,10 +16,11 @@ impl MyActor {
     }
 }
 
+#[async_trait]
 impl Actor for MyActor {
     type Message = MyActorMessage;
 
-    fn handle_message(&mut self, msg: Self::Message) {
+    async fn handle_message(&mut self, msg: Self::Message) {
         match msg {
             MyActorMessage::GetNextUID { reply_to } => {
                 if self.index >= self.db.len() {

@@ -1,19 +1,23 @@
 use actormodel::{Actor,MessageDispatcher};
 use tokio::sync::{oneshot};
+use async_trait::async_trait;
 
 struct MyActor {
     counter: u64,
 }
-
-impl Actor for MyActor {
-    type Message = MyActorMessage;
-
+impl MyActor {
     fn new() -> Self {
         MyActor {
             counter: 0,
         }
     }
-    fn handle_message(&mut self, msg: Self::Message) {
+}
+#[async_trait]
+impl Actor for MyActor {
+    type Message = MyActorMessage;
+
+
+    async fn handle_message(&mut self, msg: Self::Message) {
         match msg {
             MyActorMessage::GetNextUID { reply_to } => {
                 self.counter += 1;

@@ -1,8 +1,10 @@
 use tokio::sync::mpsc;
+use async_trait::async_trait;
 
+#[async_trait]
 pub trait Actor {
     type Message;
-    fn handle_message(&mut self, msg: Self::Message);
+    async fn handle_message(&mut self, msg: Self::Message);
 }
 
 // feeds messages to the Actor
@@ -27,7 +29,7 @@ impl<A> MessageReceiver<A>
     // while loop consuming messages from receiver
     async fn run(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
-            self.actor.handle_message(msg);
+            self.actor.handle_message(msg).await;
         }
     }
 }
